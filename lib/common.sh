@@ -192,11 +192,15 @@ clear_caches() {
     local drop_cmd="${DROP_CACHES_CMD:-sync && echo 3 > /proc/sys/vm/drop_caches}"
 
     echo "  🧹 Clearing memory caches..."
-    sudo bash -c "$drop_cmd" 2>/dev/null && echo "    ✓ $(hostname)" || true
+    if sudo -n bash -c "$drop_cmd" 2>/dev/null; then
+        echo "    ✓ $(hostname)"
+    else
+        echo "    ⚠ $(hostname) (skipped — no passwordless sudo)"
+    fi
 
     for peer in ${PEER_NODES:-}; do
         ssh -o ConnectTimeout=5 -o BatchMode=yes "$peer" \
-            "sudo bash -c '$drop_cmd'" 2>/dev/null \
+            "sudo -n bash -c '$drop_cmd'" 2>/dev/null \
             && echo "    ✓ $peer" \
             || echo "    ⚠ $peer (skipped)" >&2
     done
