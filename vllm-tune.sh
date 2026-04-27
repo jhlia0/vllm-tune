@@ -178,6 +178,23 @@ if $DEPLOY_ONLY || $DRY_RUN || [[ "${_VLLM_TUNE_INSIDE_TMUX:-}" == "1" ]]; then
     USE_TMUX=false
 fi
 
+# Pre-check: fail fast if container isn't running (before spawning tmux)
+if ! $DRY_RUN; then
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
+        echo "" >&2
+        echo "  Error: No running container named '$CONTAINER'." >&2
+        echo "" >&2
+        echo "  vLLM-Tune needs a running vLLM container to tune kernels inside." >&2
+        echo "  Start one first, e.g.:" >&2
+        echo "    launch-cluster.sh ...    # spark-vllm-docker" >&2
+        echo "" >&2
+        if [[ "$CONTAINER" == "vllm_node" ]]; then
+            echo "  Using a different container name? Pass -t <name>" >&2
+        fi
+        exit 1
+    fi
+fi
+
 if $USE_TMUX; then
     command -v tmux &>/dev/null || die "tmux is required for background tuning. Install it or use --foreground."
 
@@ -220,19 +237,6 @@ fi
 # ── Preflight checks ───────────────────────────────────────────────
 
 if ! $DEPLOY_ONLY; then
-    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER"; then
-        echo "" >&2
-        echo "  Error: No running container named '$CONTAINER'." >&2
-        echo "" >&2
-        echo "  vLLM-Tune needs a running vLLM container to tune kernels inside." >&2
-        echo "  Start one first, e.g.:" >&2
-        echo "    launch-cluster.sh ...    # spark-vllm-docker" >&2
-        echo "" >&2
-        if [[ "$CONTAINER" == "vllm_node" ]]; then
-            echo "  Using a different container name? Pass -t <name>" >&2
-        fi
-        exit 1
-    fi
     command -v jq &>/dev/null || die "jq is required. Install: sudo apt install jq"
 fi
 
