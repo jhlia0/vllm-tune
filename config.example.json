@@ -1,0 +1,9 @@
+{
+    "_comment": "vLLM-Tune configuration — copy to config.json and edit",
+    "spark_vllm_docker": "",
+    "configs_dir": "",
+    "container": "vllm_node",
+    "tp": 2,
+    "dtype": "fp8_w8a8",
+    "sync_targets": []
+}

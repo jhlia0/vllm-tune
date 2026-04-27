@@ -1,0 +1,14 @@
+# Temporary backup directories
+configs/backups/
+configs/reports/
+
+# User-specific configuration
+config.json
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
