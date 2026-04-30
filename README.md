@@ -59,7 +59,7 @@ git clone https://github.com/SeraphimSerapis/vllm-tune.git ~/vllm-tune
 vLLM-Tune runs tuning benchmarks **inside a running vLLM container**. Before running `vllm-tune.sh`, make sure you have:
 
 1. A running vLLM Docker container (default name: `vllm_node`, override with `-t`)
-   — e.g. launched via [spark-vllm-docker](https://github.com/NVIDIA/spark-vllm-docker)'s `launch-cluster.sh`
+   — e.g. launched via [spark-vllm-docker](https://github.com/eugr/spark-vllm-docker)'s `launch-cluster.sh`
 2. `jq` installed on the host
 3. `tmux` (optional, for `--tmux` detachable sessions)
 4. `sudo` access (optional, for cache clearing between tuning rounds)
