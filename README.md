@@ -121,8 +121,12 @@ configs/
 | `--mode fp8` | FP8 block-scaled dense GEMM kernels | **Any FP8 model** — MoE and dense alike |
 | `--mode all` | Both | MoE FP8 models (gets maximum benefit) |
 
-> **Dense FP8 models** (e.g., Llama-70B-FP8) benefit from `--mode fp8` — it tunes
+> **Dense FP8 models** (e.g., Llama-70B-FP8, Qwen3.6-27B-FP8) benefit from `--mode fp8` — it tunes
 > the same Triton matmul kernels used in attention projections and FFN layers.
+>
+> **Auto-detection:** When using `--mode all` (the default), vLLM-Tune automatically
+> detects whether the model has MoE layers. Dense models skip MoE tuning with an
+> informative message and proceed directly to FP8 tuning — no errors, no wasted time.
 
 ### Scope: FP8 Models Only
 

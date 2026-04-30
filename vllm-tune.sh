@@ -45,7 +45,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TUNE_SCRIPTS_DIR="${TUNE_SCRIPTS_DIR:-$SCRIPT_DIR}"
-VERSION="0.1.3"
+VERSION="0.1.4"
 
 # Source shared library (config helpers, etc.)
 source "$SCRIPT_DIR/lib/common.sh"
@@ -535,6 +535,22 @@ TUNING_START=$SECONDS
 MOE_OK=false
 FP8_OK=false
 
+# ── Architecture detection ──────────────────────────────────────────
+# Detect whether model uses Mixture-of-Experts (MoE) or is a dense
+# transformer. This determines whether MoE tuning is applicable.
+
+IS_MOE=false
+if [[ "$MODE" == "all" || "$MODE" == "moe" ]] && ! $DRY_RUN; then
+    _arch_result=$(docker exec "$CONTAINER" python3 -c "
+from vllm.transformers_utils.config import get_config
+config = get_config(model='$MODEL', trust_remote_code=True)
+tc = getattr(config, 'text_config', config)
+E = getattr(tc, 'num_local_experts', None)
+print('moe' if E and int(E) > 0 else 'dense')
+" 2>/dev/null) || _arch_result="unknown"
+    [[ "$_arch_result" == "moe" ]] && IS_MOE=true
+fi
+
 # ── MoE tuning ──────────────────────────────────────────────────────
 
 if [[ "$MODE" == "all" || "$MODE" == "moe" ]]; then
@@ -542,16 +558,35 @@ if [[ "$MODE" == "all" || "$MODE" == "moe" ]]; then
     printf "│ \033[1mPhase 1: MoE Kernel Tuning\033[0m\n"
     echo "└─────────────────────────────────────────────────────────────────"
 
-    MOE_SCRIPT="$TUNE_SCRIPTS_DIR/tune-moe.sh"
-    [[ -x "$MOE_SCRIPT" ]] || die "MoE tuning script not found: $MOE_SCRIPT"
-
-    if $DRY_RUN; then
-        echo "  [dry-run] $MOE_SCRIPT $MODEL --tp $TP --dtype $DTYPE ${BS_ARGS[*]+${BS_ARGS[*]}}"
+    if ! $IS_MOE && ! $DRY_RUN; then
+        if [[ "$MODE" == "moe" ]]; then
+            # User explicitly requested MoE-only on a dense model
+            echo "  ❌ $MODEL is a dense model — MoE tuning is not applicable."
+            echo "     MoE tuning requires models with mixture-of-experts layers"
+            echo "     (e.g., Qwen-A3B, Mixtral, DeepSeek-V2)."
+            echo ""
+            echo "  💡 For dense FP8 models, use:"
+            echo "       vllm-tune.sh $MODEL --mode fp8 --tp $TP"
+            exit 1
+        else
+            # --mode all: gracefully skip MoE, continue with FP8
+            echo "  ⏭ $MODEL is a dense model — skipping MoE tuning (no expert layers)"
+            echo "  → Proceeding directly to FP8 dense GEMM tuning"
+            echo ""
+            MOE_OK=true  # Not a failure, just not applicable
+        fi
     else
-        CONFIGS_DIR="$CONFIGS_MOE" \
-        HOST_BACKUP_DIR="$CONFIG_HOME/backups/$SLUG/moe" \
-        CONTAINER="$CONTAINER" \
-        "$MOE_SCRIPT" "$MODEL" --tp "$TP" --dtype "$DTYPE" ${BS_ARGS[@]+"${BS_ARGS[@]}"} && MOE_OK=true || true
+        MOE_SCRIPT="$TUNE_SCRIPTS_DIR/tune-moe.sh"
+        [[ -x "$MOE_SCRIPT" ]] || die "MoE tuning script not found: $MOE_SCRIPT"
+
+        if $DRY_RUN; then
+            echo "  [dry-run] $MOE_SCRIPT $MODEL --tp $TP --dtype $DTYPE ${BS_ARGS[*]+${BS_ARGS[*]}}"
+        else
+            CONFIGS_DIR="$CONFIGS_MOE" \
+            HOST_BACKUP_DIR="$CONFIG_HOME/backups/$SLUG/moe" \
+            CONTAINER="$CONTAINER" \
+            "$MOE_SCRIPT" "$MODEL" --tp "$TP" --dtype "$DTYPE" ${BS_ARGS[@]+"${BS_ARGS[@]}"} && MOE_OK=true || true
+        fi
     fi
     echo
 fi
