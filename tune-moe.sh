@@ -99,6 +99,8 @@ run_tune() {
          git clone --depth 1 --filter=blob:none --sparse \
            https://github.com/vllm-project/vllm.git /tmp/vllm-bench 2>/dev/null && \
          cd /tmp/vllm-bench && git sparse-checkout set benchmarks 2>/dev/null && \
+         grep -q 'DeepseekV4ForCausalLM' benchmarks/kernels/benchmark_moe.py || \
+           sed -i 's/\"DeepseekV3ForCausalLM\",/\"DeepseekV3ForCausalLM\", \"DeepseekV4ForCausalLM\",/' benchmarks/kernels/benchmark_moe.py; \
          python3 benchmarks/kernels/benchmark_moe.py \
            --model $MODEL \
            --tp-size $TP \

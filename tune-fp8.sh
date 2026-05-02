@@ -126,6 +126,7 @@ try:
     head_dim = getattr(tc, 'head_dim', hidden_size // num_heads)
     shared_expert_size = getattr(tc, 'shared_expert_intermediate_size', None)
     intermediate_size = getattr(tc, 'intermediate_size', None)
+    moe_intermediate_size = getattr(tc, 'moe_intermediate_size', None)
     tp = $TP
 
     shapes = set()
@@ -158,6 +159,11 @@ try:
     if intermediate_size:
         shapes.add((intermediate_size // tp, hidden_size))
         shapes.add((hidden_size, intermediate_size // tp))
+
+    # MoE expert FFN (DeepSeek-V3/V4 use moe_intermediate_size)
+    if moe_intermediate_size:
+        shapes.add((moe_intermediate_size, hidden_size))
+        shapes.add((hidden_size, moe_intermediate_size // tp))
 
     for n, k in sorted(shapes):
         print(f'{n},{k}')

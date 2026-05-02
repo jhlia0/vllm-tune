@@ -545,7 +545,7 @@ if [[ "$MODE" == "all" || "$MODE" == "moe" ]] && ! $DRY_RUN; then
 from vllm.transformers_utils.config import get_config
 config = get_config(model='$MODEL', trust_remote_code=True)
 tc = getattr(config, 'text_config', config)
-E = getattr(tc, 'num_local_experts', None)
+E = getattr(tc, 'num_local_experts', 0) or getattr(tc, 'n_routed_experts', 0)
 print('moe' if E and int(E) > 0 else 'dense')
 " 2>/dev/null) || _arch_result="unknown"
     [[ "$_arch_result" == "moe" ]] && IS_MOE=true
