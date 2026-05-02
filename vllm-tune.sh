@@ -46,7 +46,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TUNE_SCRIPTS_DIR="${TUNE_SCRIPTS_DIR:-$SCRIPT_DIR}"
-VERSION="0.1.4"
+VERSION="0.2.0"
 
 # Source shared library (config helpers, etc.)
 source "$SCRIPT_DIR/lib/common.sh"
