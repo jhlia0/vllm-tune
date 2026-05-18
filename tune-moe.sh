@@ -92,22 +92,37 @@ preflight
 
 # Run benchmark_moe.py for a single batch size inside the container.
 # Uses tini as subreaper (if available) to prevent zombie accumulation.
+#
+# Steps:
+#   1. Clone vllm-bench and apply model-specific patches (DeepSeek V4,
+#      Gemma4 — fixes models not yet supported by upstream benchmark_moe.py)
+#   2. Run the benchmark for the given batch size
 run_tune() {
     local bs=$1
-    docker exec "$CONTAINER" $INIT_WRAPPER bash -c \
+
+    # Clone vllm-bench and apply patches
+    docker exec "$CONTAINER" bash -c \
         "rm -rf /tmp/vllm-bench && \
          git clone --depth 1 --filter=blob:none --sparse \
            https://github.com/vllm-project/vllm.git /tmp/vllm-bench 2>/dev/null && \
          cd /tmp/vllm-bench && git sparse-checkout set benchmarks 2>/dev/null && \
          grep -q 'DeepseekV4ForCausalLM' benchmarks/kernels/benchmark_moe.py || \
-           sed -i 's/\"DeepseekV3ForCausalLM\",/\"DeepseekV3ForCausalLM\", \"DeepseekV4ForCausalLM\",/' benchmarks/kernels/benchmark_moe.py; \
-         python3 benchmarks/kernels/benchmark_moe.py \
-           --model $MODEL \
-           --tp-size $TP \
-           --dtype $DTYPE \
-           --tune \
-           --batch-size $bs \
-           --save-dir $CONTAINER_SAVE_DIR/"
+           sed -i 's/\"DeepseekV3ForCausalLM\",/\"DeepseekV3ForCausalLM\", \"DeepseekV4ForCausalLM\",/' benchmarks/kernels/benchmark_moe.py"
+
+    # Apply Gemma4 patch (adds Gemma4ForConditionalGeneration support)
+    # Uses top_k_experts instead of num_experts_per_tok — see issue #7
+    docker exec "$CONTAINER" python3 -c \
+        "$(cat "$SCRIPT_DIR/lib/gemma4_moe_patch.py")"
+
+    # Run the benchmark (wrapped in subreaper if available)
+    docker exec "$CONTAINER" $INIT_WRAPPER \
+        python3 /tmp/vllm-bench/benchmarks/kernels/benchmark_moe.py \
+            --model "$MODEL" \
+            --tp-size "$TP" \
+            --dtype "$DTYPE" \
+            --tune \
+            --batch-size "$bs" \
+            --save-dir "$CONTAINER_SAVE_DIR/"
 }
 
 # ── Main loop ───────────────────────────────────────────────────────

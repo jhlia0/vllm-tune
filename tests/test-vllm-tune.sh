@@ -318,6 +318,48 @@ else
     fail "tune-moe.sh missing DeepSeek-V4 model class patch"
 fi
 
+# ── Gemma4 MoE patch ───────────────────────────────────────────────
+
+printf "\n\033[1m  Gemma4 MoE patch (issue #7)\033[0m\n"
+
+GEMMA4_PATCH="$SCRIPT_DIR/lib/gemma4_moe_patch.py"
+
+if [[ -f "$GEMMA4_PATCH" ]]; then
+    pass "lib/gemma4_moe_patch.py exists"
+else
+    fail "lib/gemma4_moe_patch.py missing (needed for Gemma4 MoE tuning)"
+fi
+
+if python3 -c "import py_compile; py_compile.compile('$GEMMA4_PATCH', doraise=True)" 2>/dev/null; then
+    pass "lib/gemma4_moe_patch.py: valid Python syntax"
+else
+    fail "lib/gemma4_moe_patch.py: syntax errors detected"
+fi
+
+if grep -q "gemma4_moe_patch" "$TUNE_MOE"; then
+    pass "tune-moe.sh references lib/gemma4_moe_patch.py"
+else
+    fail "tune-moe.sh missing gemma4_moe_patch.py reference"
+fi
+
+if grep -q "Gemma4ForConditionalGeneration" "$GEMMA4_PATCH"; then
+    pass "gemma4_moe_patch.py targets Gemma4ForConditionalGeneration"
+else
+    fail "gemma4_moe_patch.py missing Gemma4ForConditionalGeneration"
+fi
+
+if grep -q "top_k_experts" "$GEMMA4_PATCH"; then
+    pass "gemma4_moe_patch.py handles top_k_experts (Gemma4-specific field)"
+else
+    fail "gemma4_moe_patch.py missing top_k_experts handling"
+fi
+
+if grep -q "SENTINEL\|already patched" "$GEMMA4_PATCH"; then
+    pass "gemma4_moe_patch.py is idempotent (sentinel check present)"
+else
+    fail "gemma4_moe_patch.py missing idempotency sentinel check"
+fi
+
 # Verify dist-tune.py doesn't have hardcoded user paths
 DIST_TUNE="$SCRIPT_DIR/dist-tune.py"
 if [[ -f "$DIST_TUNE" ]]; then
