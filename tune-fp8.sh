@@ -135,8 +135,10 @@ fi
 # BLOCK_SIZE_M/N/K, GROUP_SIZE_M, num_warps, and num_stages.
 run_tune_shape() {
     local n=$1 k=$2
+    shift 2
+    local -a sizes=("$@")
     local bs_python
-    bs_python=$(IFS=,; echo "${BATCH_SIZES[*]}")
+    bs_python=$(IFS=,; echo "${sizes[*]}")
 
     docker exec "$CONTAINER" $INIT_WRAPPER python3 -c "
 import json, os, sys, time
@@ -246,30 +248,18 @@ SUCCEEDED=()
 SKIPPED=()
 declare -A TIMINGS
 
-# Check if a shape is already fully tuned for all requested batch sizes.
-# Reads the device name from any existing config file, then checks if
-# the specific shape's config file exists and contains all batch sizes.
-# Returns 0 (fully tuned) or 1 (needs tuning).
-_shape_already_tuned() {
+# Print the batch sizes already tuned for shape (N,K), one per line.
+# Reads keys from the matching config file in $CONFIGS_DIR (any device_name).
+# Prints nothing if no config exists for this shape.
+_tuned_batch_sizes_for_shape() {
     local n="$1" k="$2"
-    # Find matching config file (we don't know device_name yet, so glob it)
     local pattern="$CONFIGS_DIR/N=${n},K=${k},device_name=*,dtype=fp8_w8a8,block_shape=*.json"
     local cfg
     for cfg in $pattern; do
         [[ -f "$cfg" ]] || continue
-        # Check if all requested batch sizes are present as keys
-        local all_present=true
-        for bs in "${BATCH_SIZES[@]}"; do
-            if ! jq -e --arg k "$bs" 'has($k)' "$cfg" >/dev/null 2>&1; then
-                all_present=false
-                break
-            fi
-        done
-        if $all_present; then
-            return 0
-        fi
+        jq -r 'keys[]' "$cfg" 2>/dev/null
+        return
     done
-    return 1
 }
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -296,8 +286,19 @@ for SHAPE in "${SHAPES[@]}"; do
     K="${SHAPE##*,}"
     COMPLETED=$((COMPLETED + 1))
 
-    # Skip shapes that are already fully tuned
-    if _shape_already_tuned "$N" "$K"; then
+    # Compute which batch sizes still need tuning for this shape.
+    mapfile -t _DONE < <(_tuned_batch_sizes_for_shape "$N" "$K")
+    MISSING=()
+    for bs in "${BATCH_SIZES[@]}"; do
+        _found=false
+        for d in "${_DONE[@]+${_DONE[@]}}"; do
+            [[ "$d" == "$bs" ]] && { _found=true; break; }
+        done
+        $_found || MISSING+=("$bs")
+    done
+
+    # All requested batch sizes already present → skip the whole shape.
+    if [[ ${#MISSING[@]} -eq 0 ]]; then
         printf "  ⏭ [%d/%d] N=%s,K=%s — already tuned, skipping\n" "$COMPLETED" "$TOTAL" "$N" "$K"
         SKIPPED+=("${N},${K}")
         continue
@@ -305,11 +306,15 @@ for SHAPE in "${SHAPES[@]}"; do
 
     echo "┌─────────────────────────────────────────────────────────────────"
     printf "│ \033[1m[%d/%d] Tuning N=%s, K=%s\033[0m\n" "$COMPLETED" "$TOTAL" "$N" "$K"
+    if [[ ${#_DONE[@]} -gt 0 ]]; then
+        printf "│   Resuming — already done: %s\n" "${_DONE[*]}"
+        printf "│   To tune:                  %s\n" "${MISSING[*]}"
+    fi
     echo "└─────────────────────────────────────────────────────────────────"
 
     START_TIME=$SECONDS
 
-    if run_with_retry "N=$N,K=$K" run_tune_shape "$N" "$K"; then
+    if run_with_retry "N=$N,K=$K" run_tune_shape "$N" "$K" "${MISSING[@]}"; then
         ELAPSED=$(( SECONDS - START_TIME ))
         TIMINGS["${N},${K}"]=$ELAPSED
         printf "  ✅ N=%s,K=%s completed in %s\n" "$N" "$K" "$(fmt_time $ELAPSED)"
